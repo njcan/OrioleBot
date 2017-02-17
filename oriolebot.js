@@ -6,8 +6,8 @@
     -> http://my.slack.com/services/new/bot
 
   Run your bot from the command line:
-
-    token=<MY TOKEN> node slack_bot.js
+    set token=<token>
+    node slack_bot.js
 */
 
 /*
@@ -35,13 +35,220 @@ var bot = controller.spawn({
 */
 
 // Created own string insertion method :D
-String.prototype.insertAt=function(index, string) { 
+String.prototype.insertAt = function(index, string) { 
   return this.substr(0, index) + string + this.substr(index);
 }
 
+// Sometimes the bot shuts down by itself? (Stale RTM connection?)
+controller.on('rtm_close', function() {
+    
+    // Restart
+    var bot = controller.spawn({
+        token: process.env.token,   
+    }).startRTM();
+});
+
+// When someone joins the channel
+controller.on('user_channel_join', function(bot, message)
+{
+    var msg = ":oriolesparrot::oriolesparrot: Welcome to Birdland! :oriolesparrot::oriolesparrot:";
+    bot.reply(message, msg);
+});
+
+
+controller.hears(['roster', 'Roster'], 'direct_message, direct_mention', function(bot, message){
+    
+    // URL to scrape
+    var url = 'http://www.espn.com/mlb/team/roster/_/name/bal/baltimore-orioles';
+
+    // Request the url & get its html
+    request(url, function(error, response, body)
+        {
+            // Error handling on request
+            if(error)
+                throw error;
+
+            // Load the html from the url
+            var $ = cheerio.load(body);
+
+            var no   = [];
+            var name = [];
+            var pos  = [];
+            var bat  = [];
+            var thw  = [];
+            var age  = [];
+            var hgt  = [];
+            var wgt  = [];
+
+            // Get oddrows
+            $('tr.oddrow').each(function()
+            {
+                $(this).find('td').each(function(i, element) {
+                    switch(i) {
+
+                        // Push number into no
+                        case 0:
+                            no.push($(this).text());
+                            break;
+
+                        // Push name into name
+                        case 1:
+                            name.push($(this).text());
+                            break;
+
+                        // Push position into pos
+                        case 2:
+                            pos.push($(this).text());
+                            break;
+
+                        // Push bats into bat
+                        case 3:
+                            bat.push($(this).text());
+                            break;
+
+                        // Push throws into thw
+                        case 4:
+                            thw.push($(this).text());
+                            break;
+
+                        // Push age into age
+                        case 5:
+                            age.push($(this).text());
+                            break;
+
+                        // Push height into hgt
+                        case 6:
+                            hgt.push($(this).text());
+                            break;
+
+                        // Push weight into wgt
+                        case 7:
+                            wgt.push($(this).text());
+                            break;
+
+                    }
+
+                    
+                });  
+            }); // End oddrow search
+
+            // Get the game status
+            $('tr.evenrow').each(function()
+            {
+                $(this).find('td').each(function(i, element) {
+                    switch(i) {
+
+                        // Push number into no
+                        case 0:
+                            no.push($(this).text());
+                            break;
+
+                        // Push name into name
+                        case 1:
+                            name.push($(this).text());
+                            break;
+
+                        // Push position into pos
+                        case 2:
+                            pos.push($(this).text());
+                            break;
+
+                        // Push bats into bat
+                        case 3:
+                            bat.push($(this).text());
+                            break;
+
+                        // Push throws into thw
+                        case 4:
+                            thw.push($(this).text());
+                            break;
+
+                        // Push age into age
+                        case 5:
+                            age.push($(this).text());
+                            break;
+
+                        // Push height into hgt
+                        case 6:
+                            hgt.push($(this).text());
+                            break;
+
+                        // Push weight into wgt
+                        case 7:
+                            wgt.push($(this).text());
+                            break;
+
+                    }
+
+                    
+                });  
+            }); // End evenrow search
+
+            // Heading for output
+            var header = "No.      Name                  Pos  Bat Thw  Age  Hgt  Wgt\n";
+            var line = "-".repeat(header.length-1);
+            var data = "";
+            for(var item = 0; item < no.length; item++)
+            {
+                line = line.insertAt(0, no[item]);
+                line = line.insertAt(9, name[item]);
+                line = line.insertAt(31, pos[item]);
+                line = line.insertAt(37, bat[item]);
+                line = line.insertAt(41, thw[item]);
+                line = line.insertAt(45, age[item]);
+                line = line.insertAt(50, hgt[item]);
+                line = line.insertAt(55, wgt[item]);
+                if(item != no.length-1)
+                    line = line + "\n";
+                data = data + line;
+                line = "";
+                line = "-".repeat(header.length-1);
+
+            }
+
+            
+
+
+            
+
+            // Format the message as a code-block in Slack
+            var result = {
+                "text": "```" + header + data + "```"
+            }
+
+            // Execute the reply
+            bot.reply(message, result.text);
+
+        }); // End request
+
+});
+
+
+// Listener for 'help' in mention/dm
+controller.hears(['help', 'Help'], 'direct_mention,direct_message', function(bot, message)
+{
+    // Craft help message.
+    var helpMsg = "Commands \t\t Implemented? \t\t Purpose\n" +
+              "Help         \t\t Yes          \t Returns the list of commands for OrioleBot.\n" +
+              "Countdown    \t\t Yes          \t Returns the number of days until the O's home opener.\n" +
+              "Roster       \t\t No           \t Returns the Orioles' 40-man roster.\n" +
+              "Score        \t\t No           \t Returns the score of the current or last Orioles game.\n" +
+              "Stats        \t\t No           \t Returns the stats of the requested player.";
+
+    var result = {
+                "text": "```" + helpMsg+ "```"
+            }
+
+    // Execute response
+    bot.reply(message, result.text);
+});
+
+
+
+
 
 // Listener for 'schedule' in mention/direct message
-controller.hears(['schedule'], 'direct_mention,direct_message', function(bot, message) {
+controller.hears(['schedule','Schedule'], 'direct_mention,direct_message', function(bot, message) {
     
     // URL to scrape
     var url = '';
@@ -126,8 +333,8 @@ controller.hears(['schedule'], 'direct_mention,direct_message', function(bot, me
                 data = data.insertAt((i+1)*output.length-1, "\n");
             }
 
-            // Format the message as a code-block
-            result = {
+            // Format the message as a code-block in Slack
+            var result = {
                 "text": "```" + output + data + "```"
             }
 
@@ -136,9 +343,12 @@ controller.hears(['schedule'], 'direct_mention,direct_message', function(bot, me
         });
 });
 
-// Countdown function
-function getCountdown()
-{
+
+
+
+// Countdown listener
+controller.hears(['countdown','Countdown'], 'direct_mention,direct_message', function(bot, message) {
+    
     // Date of Os home opener, what time it is now, the difference
     var openingDay = new Date("April 3, 2017 15:05:00").getTime();
     var now = new Date().getTime();
@@ -151,13 +361,12 @@ function getCountdown()
     var seconds = Math.floor((timeLeft % (1000 * 60)) / 1000);
 
     // Return the string of data
-    return "Time until Orioles opener: " + days + " days " + hours + " hours " + minutes + " minutes " + seconds + " seconds";
-};
+    var cd = ":oriolesparrot::oriolesparrot: " + days + " days " + hours + " hours " + minutes + " minutes and " + seconds + " seconds until the O's home opener! :oriolesparrot::oriolesparrot:";
 
-// Countdown listener
-controller.hears(['countdown'], 'direct_mention,direct_message', function(bot, message) {
-    
-    // Execute the response
-    bot.reply(message, getCountdown());
+    // Execute the reply
+    bot.reply(message, cd);
 });
+
+
+
 
