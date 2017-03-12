@@ -2,7 +2,7 @@
    ----- Initialization -----
 */
 
-// I use to read the token from the cmd line
+// I use to read the bot's token from the cmd line
 /*if (!process.env.token) {
     console.log('Error: Specify token in environment');
     process.exit(1);
@@ -16,13 +16,34 @@ var cheerio = require('cheerio');
 
 // Debug 
 var controller = Botkit.slackbot({
-    debug: true,
+    debug: false,
 });
 
 // Initilization of the bot w/ its token
 var bot = controller.spawn({
-    token: 'place_token_here' // process.env.token
+    token: '' // process.env.token
 }).startRTM();
+
+var establishGameId = function() {
+
+    // Get the spring training data
+    var url = 'http://www.espn.com/mlb/scoreboard'
+        
+    // Request the url & get its html
+    request(url, function(error, response, body)
+    {
+        // Error handling on request
+        if(error)
+            throw error;
+
+        // Load the html from the url
+        var $ = cheerio.load(body);
+
+        $(this).find('div.events').find('article[')
+
+}
+
+var gameID = establishGameId();
 
 /*
    ----- End Initialization -----
@@ -45,15 +66,15 @@ controller.on('rtm_close', function() {
     
     // Restart
     var bot = controller.spawn({
-        token: 'place_token_here'   
+        token: ''   
     }).startRTM();
 });
 
 // When someone joins the channel
 controller.on('user_channel_join', function(bot, message)
 {
-    var msg = ":oriolesparrot::oriolesparrot: Welcome to Birdland! :oriolesparrot::oriolesparrot:";
-    bot.reply(message, msg);
+    var msg = ":orioles::orioles: Welcome to Birdland! :orioles::orioles:";
+    bot.reply(message, msg); // Reply with the message
 });
 
 // Load the Orioles Roster
@@ -195,8 +216,8 @@ controller.hears(['help', 'Help'], 'direct_mention,direct_message', function(bot
 // Listener for 'schedule' in mention/direct message
 controller.hears(['schedule','Schedule'], 'direct_mention,direct_message', function(bot, message) {
 
-     bot.reply(message, "The schedule command is down for maintenance at this time.");
-     return;
+     // bot.reply(message, "The schedule command is down for maintenance at this time.");
+     // return;
     
     // URL to scrape
     var url = '';
@@ -512,4 +533,9 @@ controller.hears(['countdown','Countdown'], 'direct_mention,direct_message', fun
 });
 
 
+controller.hears(['score', 'Score'], 'direct_mention,direct_message', function(bot, message) {
 
+
+
+
+});
