@@ -1,12 +1,8 @@
-/*
+/* 
+   --------------------------
    ----- Initialization -----
+   --------------------------
 */
-
-// I use to read the bot's token from the cmd line
-/*if (!process.env.token) {
-    console.log('Error: Specify token in environment');
-    process.exit(1);
-}*/
 
 // Dependencies 
 var Botkit = require('./lib/Botkit.js');
@@ -14,39 +10,25 @@ var os = require('os');
 var request = require('request');
 var cheerio = require('cheerio');
 
-// Debug 
+// Debug [overridden below]
 var controller = Botkit.slackbot({
-    debug: false,
+    debug: true,
+    stats_optout: true
 });
 
-// Initilization of the bot w/ its token
+// Globals
+var NUMBER_OF_TICKS        = 0;  // Track amount of ticks
+var SCORE_REQUEST_INTERVAL = 30; // Every X seconds will we request a score/play update
+
+// Spawn the bot with its token
 var bot = controller.spawn({
     token: '' // process.env.token
 }).startRTM();
 
-var establishGameId = function() {
-
-    // Get the spring training data
-    var url = 'http://www.espn.com/mlb/scoreboard'
-        
-    // Request the url & get its html
-    request(url, function(error, response, body)
-    {
-        // Error handling on request
-        if(error)
-            throw error;
-
-        // Load the html from the url
-        var $ = cheerio.load(body);
-
-        $(this).find('div.events').find('article[')
-
-}
-
-var gameID = establishGameId();
-
-/*
-   ----- End Initialization -----
+/* 
+   --------------------------
+   --- End Initialization ---
+   --------------------------
 */
 
 // String insertion method
@@ -68,13 +50,34 @@ controller.on('rtm_close', function() {
     var bot = controller.spawn({
         token: ''   
     }).startRTM();
+
+    // Reset ticks
+    NUMBER_OF_TICKS = 0;
+});
+
+// Redefine the debug tick event to be more 
+// specific when tracing errors and bugs
+controller.on('tick', function(bot, message) {
+    
+    // Increment ticks
+    NUMBER_OF_TICKS++;
+
+    if(NUMBER_OF_TICKS % SCORE_REQUEST_INTERVAL === 0) {
+        controller.log("Score request");
+    } else {
+        // controller.log(NUMBER_OF_TICKS);
+    }
 });
 
 // When someone joins the channel
 controller.on('user_channel_join', function(bot, message)
 {
-    var msg = ":orioles::orioles: Welcome to Birdland! :orioles::orioles:";
-    bot.reply(message, msg); // Reply with the message
+    // Get the users info
+    bot.api.users.info({user: message.user}, function(error, info) 
+    {
+        // Execute the reply to the user
+        bot.reply(message, ":orioles::orioles: Welcome to Birdland <@" + info.user.name + "> ! :orioles::orioles:");
+    }); 
 });
 
 // Load the Orioles Roster
@@ -216,8 +219,8 @@ controller.hears(['help', 'Help'], 'direct_mention,direct_message', function(bot
 // Listener for 'schedule' in mention/direct message
 controller.hears(['schedule','Schedule'], 'direct_mention,direct_message', function(bot, message) {
 
-     // bot.reply(message, "The schedule command is down for maintenance at this time.");
-     // return;
+    bot.reply(message, "The schedule command is down for maintenance at this time.");
+    return;
     
     // URL to scrape
     var url = '';
@@ -534,8 +537,23 @@ controller.hears(['countdown','Countdown'], 'direct_mention,direct_message', fun
 
 
 controller.hears(['score', 'Score'], 'direct_mention,direct_message', function(bot, message) {
+    
+    // Get the spring training data
+    var url = 'http://www.espn.com/mlb/scoreboard'
+        
+    // Request the url & get its html
+    request(url, function(error, response, body)
+    {
+        controller.log("Requesting Game ID...");
+        // Error handling on request
+        if(error)
+            throw error;
 
+        // Load the html from the url
+        var $ = cheerio.load(body);
 
-
-
+        // The Orioles are team '1' on espn. This searches both home and away data-attributes
+        // to find which score listing has the Orioles in it. When found, return that game ID
+        bot.reply(message, "Found: " + $("#events").find("article").length);
+    });
 });
