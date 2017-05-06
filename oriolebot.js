@@ -1,12 +1,8 @@
-/*
+/* 
+   --------------------------
    ----- Initialization -----
+   --------------------------
 */
-
-// I use to read the token from the cmd line
-/*if (!process.env.token) {
-    console.log('Error: Specify token in environment');
-    process.exit(1);
-}*/
 
 // Dependencies 
 var Botkit = require('./lib/Botkit.js');
@@ -14,18 +10,26 @@ var os = require('os');
 var request = require('request');
 var cheerio = require('cheerio');
 
-// Debug 
+// Debug [overridden below]
 var controller = Botkit.slackbot({
-    debug: true,
+    debug: false,
+    stats_optout: true
 });
 
-// Initilization of the bot w/ its token
+// Globals
+var NUMBER_OF_TICKS        = 0;  // Track amount of ticks
+var SCORE_REQUEST_INTERVAL = 30; // Every X seconds will we request a score/play update
+var GAME_URL = undefined;        // The game url we'll be scraping from
+
+// Spawn the bot with its token
 var bot = controller.spawn({
-    token: 'place_token_here' // process.env.token
+    token: '' // process.env.token
 }).startRTM();
 
-/*
-   ----- End Initialization -----
+/* 
+   --------------------------
+   --- End Initialization ---
+   --------------------------
 */
 
 // String insertion method
@@ -45,22 +49,43 @@ controller.on('rtm_close', function() {
     
     // Restart
     var bot = controller.spawn({
-        token: 'place_token_here'   
+        token: ''   
     }).startRTM();
+
+    // Reset ticks
+    NUMBER_OF_TICKS = 0;
+});
+
+// Redefine the debug tick event to be more 
+// specific when tracing errors and bugs
+controller.on('tick', function(bot, message) {
+    
+    // Increment ticks
+    NUMBER_OF_TICKS++;
+
+    if(NUMBER_OF_TICKS % SCORE_REQUEST_INTERVAL === 0) {
+        // controller.log("Score request");
+    } else {
+        // controller.log(NUMBER_OF_TICKS);
+    }
 });
 
 // When someone joins the channel
 controller.on('user_channel_join', function(bot, message)
 {
-    var msg = ":oriolesparrot::oriolesparrot: Welcome to Birdland! :oriolesparrot::oriolesparrot:";
-    bot.reply(message, msg);
+    // Get the users info
+    bot.api.users.info({user: message.user}, function(error, info) 
+    {
+        // Execute the reply to the user
+        bot.reply(message, "Welcome to Birdland <@" + info.user.name + ">! :orioles:");
+    }); 
 });
 
 // Load the Orioles Roster
 controller.hears(['roster', 'Roster'], 'direct_message,direct_mention', function(bot, message){
     
     // URL to scrape
-    var url = 'http://www.espn.com/mlb/team/roster/_/name/bal/baltimore-orioles';
+    var url = 'http://www.espn.com/mlb/team/roster/_/name/bal/type/active';
 
     // Request the url & get its html
     request(url, function(error, response, body)
@@ -126,17 +151,6 @@ controller.hears(['roster', 'Roster'], 'direct_message,direct_mention', function
                         case 7:
                             wgt.push($(this).text());
                             break;
-                        /*
-                        // Push birth place into bir
-                        case 8:
-                            bir.push($(this).text());
-                            break;
-
-                        // Push salary into sal
-                        case 9:
-                            sal.push($(this).text());
-                            break;
-                        */
 
                     } // End switch
                 }); // End td
@@ -163,6 +177,10 @@ controller.hears(['roster', 'Roster'], 'direct_message,direct_mention', function
                roster += data;
                data = "";
             }
+
+            // Some debug for myself 
+            var output = header + roster;
+            controller.log("Roster character total: " + output.length);
 
             // Execute the reply
             bot.reply(message, "```" + header + roster + "```");
@@ -194,19 +212,10 @@ controller.hears(['help', 'Help'], 'direct_mention,direct_message', function(bot
 
 // Listener for 'schedule' in mention/direct message
 controller.hears(['schedule','Schedule'], 'direct_mention,direct_message', function(bot, message) {
-
-     bot.reply(message, "The schedule command is down for maintenance at this time.");
-     return;
     
     // URL to scrape
     var url = '';
     var month = new Date().getMonth();
-
-    // Spring training is on this URL
-    if(month === 1 || month === 2)
-    {
-        url = 'http://www.espn.com/mlb/team/schedule/_/name/bal/seasontype/1';
-    } 
 
     // First half of the season is on this URL
     if(month === 3 || month === 4 || month === 5 || month === 6) 
@@ -215,7 +224,7 @@ controller.hears(['schedule','Schedule'], 'direct_mention,direct_message', funct
     }
 
     // Second half of the season is on this URL
-    if(month === 6 || month === 7 || month === 8 || month === 9)
+    else if(month === 6 || month === 7 || month === 8 || month === 9)
     {
         url = 'http://www.espn.com/mlb/team/schedule/_/name/bal/half/2'
     }
@@ -247,19 +256,11 @@ controller.hears(['schedule','Schedule'], 'direct_mention,direct_message', funct
             // containing 'team' as part of it
             $('tr[class*=team]').each(function(i, element)
             {
-                var validDate  = new Date(); // Today 
-                validDate.setFullYear(2001); // Set year
+                // Get all of the data for this row's cells
+                var thisRowsData = $(this).find('td');
 
-                /*
-                // An array of each table data [data, data, data, ...]
-                var thisRowsData = $(this).find('td').each(function(i, element)
-                    {
-                        if(i == 0) {
-                            var thisDate = $(this).text();
-                            if(thisDate < validDate) {}
-                        }
-                    });                
-                */
+                // If this row of data isn't in the current month, go to the next row
+                if(new Date(thisRowsData.first().text()).getMonth() != new Date().getMonth()) { return true; }
 
                 // The table row will have 7 or 8 
                 // data cells in each row
@@ -279,7 +280,7 @@ controller.hears(['schedule','Schedule'], 'direct_mention,direct_message', funct
                         {
                             // Date cell
                             case 0:
-                                dates.push($(this).text().trim()); // Add date if it's the current month
+                                dates.push($(this).text().trim());
                                 break;
 
                             // Opponent cell
@@ -309,7 +310,7 @@ controller.hears(['schedule','Schedule'], 'direct_mention,direct_message', funct
 
                             // Save cell
                             case 6: 
-                                save.push($(this).text().trim());
+                                save.push($(this).text().split(" ")[0].trim());
                                 break;
 
                             // Attendance cell
@@ -330,8 +331,7 @@ controller.hears(['schedule','Schedule'], 'direct_mention,direct_message', funct
                         {
                             // Date cell
                             case 0:
-                                // if(new Date($(this).text()).getMonth() === new Date().getMonth()) 
-                                dates.push($(this).text().trim()); // Add date if it's the current month
+                                dates.push($(this).text().trim()); 
                                 break;
 
                             // Opponent cell
@@ -361,7 +361,7 @@ controller.hears(['schedule','Schedule'], 'direct_mention,direct_message', funct
 
                             // Tickets Left cell
                             case 6: 
-                                tks.push($(this).text().trim());
+                                tks.push($(this).text().trim().split(" ")[0]);
                                 break;
                         } // End switch
                     }); // End td.each
@@ -370,7 +370,7 @@ controller.hears(['schedule','Schedule'], 'direct_mention,direct_message', funct
 
             // The headings, formatted
             var pHeader = "Date         Opponent          Result        W-L  Win             Loss                Save           Attendance  \n";
-            var uHeader = "Date         Opponent          Time (EST)   Baltimore Pitcher     Opposing Pitcher    Tickets Left\n";
+            var uHeader = "Date         Opponent          Time (EST)   Baltimore Pitcher     Opposing Pitcher    Tickets Left  \n";
             
             // Empty strings to hold data
             var pData = "";
@@ -403,7 +403,7 @@ controller.hears(['schedule','Schedule'], 'direct_mention,direct_message', funct
                 // If it's an upcoming game
                 else 
                 {
-                    uData = " ".repeat(uHeader.length);         // Create a string of spaces
+                    uData = " ".repeat(uHeader.length-5);         // Create a string of spaces
                     uData = uData.insertAt(0,  dates[thisRow]); // Insert this row's data
                     uData = uData.insertAt(13, opp[thisRow]);   // Insert this row's opponent
                     uData = uData.insertAt(31, time[thisRow]);  // Insert this row's time
@@ -421,6 +421,9 @@ controller.hears(['schedule','Schedule'], 'direct_mention,direct_message', funct
 
             var output = "```" + pHeader + pOutput + "\n" + uHeader + uOutput + "```";
 
+            // Debug for myself
+            controller.log("Schedule length: " + output.length);
+
             // Execute the reply
             bot.reply(message, output);
         });
@@ -428,6 +431,9 @@ controller.hears(['schedule','Schedule'], 'direct_mention,direct_message', funct
 
 controller.hears(['stats','Stats'], 'direct_mention,direct_message', function(bot, message) {
     
+    bot.reply(message, "Stats will be live after the first game of the year.");
+    return;
+
     // Input is the user message
     var input = message.text.toLowerCase();
 
@@ -459,6 +465,9 @@ controller.hears(['stats','Stats'], 'direct_mention,direct_message', function(bo
             var data = "```" + $('div[class=mod-content]').find('pre').text() + "```";
             var data = data.replace(/�/g, '-'); // Regex to remove diacritics
 
+            // Debug for myself
+            controller.log(data.length);
+
             // Execute the reply
             bot.reply(message, data);
         });
@@ -484,6 +493,9 @@ controller.hears(['stats','Stats'], 'direct_mention,direct_message', function(bo
             var data = "```" + $('div[class=mod-content]').find('pre').text() + "```";
             var data = data.replace(/�/g, '-'); // Regex to remove diacritics
 
+            // Debug for myself
+            controller.log(data.length);
+
             // Execute the reply
             bot.reply(message, data);
         });
@@ -496,20 +508,29 @@ controller.hears(['countdown','Countdown'], 'direct_mention,direct_message', fun
     // Date of Os home opener, what time it is now, the difference
     var openingDay = new Date("April 3, 2017 15:05:00").getTime();
     var now = new Date().getTime();
-    var timeLeft = openingDay - now;
 
-    // Conversion to days/hours/mins/secs
-    var days = Math.floor(timeLeft / (1000 * 60 * 60 * 24));
-    var hours = Math.floor((timeLeft % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-    var minutes = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
-    var seconds = Math.floor((timeLeft % (1000 * 60)) / 1000);
+    if(now > openingDay) {
+        bot.reply(message, "Baseball season has arrived in Birdland! :orioles:");
+    } else {
 
-    // Return the string of data
-    var cd = ":oriolesparrot::oriolesparrot: " + days + " days " + hours + " hours " + minutes + " minutes and " + seconds + " seconds until the O's home opener! :oriolesparrot::oriolesparrot:";
+        var timeLeft = openingDay - now;
 
-    // Execute the reply
-    bot.reply(message, cd);
+        // Conversion to days/hours/mins/secs
+        var days = Math.floor(timeLeft / (1000 * 60 * 60 * 24));
+        var hours = Math.floor((timeLeft % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        var minutes = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
+        var seconds = Math.floor((timeLeft % (1000 * 60)) / 1000);
+
+        // Return the string of data
+        var cd = ":orioles::orioles: " + days + " days " + hours + " hours " + minutes + " minutes and " + seconds + " seconds until the O's home opener! :orioles::orioles:";
+
+        // Execute the reply
+        bot.reply(message, cd);
+    }
 });
 
 
-
+controller.hears(['score', 'Score'], 'direct_mention,direct_message', function(bot, message) {
+   bot.reply(message, "Sorry, score isn't implemented yet.");
+   return; 
+});
